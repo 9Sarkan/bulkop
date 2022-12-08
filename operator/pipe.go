@@ -1,27 +1,53 @@
 package operator
 
-import "context"
+import (
+	"context"
+	"log"
+)
 
 type Pipe struct {
-	processor    Processor
-	workerCount  int
-	resultChan   chan interface{}
-	errorHandler func(interface{}, error)
+	name          string
+	processor     Processor
+	workerCount   int
+	errorHandler  func(interface{}, error)
+	requestChan   chan interface{}
+	responseChan  chan interface{}
+	centralKiller chan struct{}
 }
 
-func (receiver Pipe) NewWorker(ctx context.Context, dataChan <-chan interface{}) {
+// NewWorker create new worker to listen in request channel and put response in response channel
+func (receiver Pipe) NewWorker(ctx context.Context) {
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
+				log.Default().Printf("Pipe %s worker stop according to context", receiver.name)
 				return
-			case data := <-dataChan:
+			case <-receiver.centralKiller:
+				log.Default().Printf("Pipe %s worker stop according to central killer event", receiver.name)
+				return
+			case data := <-receiver.requestChan:
 				result, err := receiver.processor(ctx, data)
 				if err != nil {
 					receiver.errorHandler(data, err)
 				}
-				receiver.resultChan <- result
+				receiver.responseChan <- result
 			}
 		}
 	}()
+	receiver.workerCount++
+}
+
+// DecreaseWorkerCount decrease one of workers
+func (receiver Pipe) DecreaseWorkerCount() {
+	// check if there is an active worker kill it
+	if receiver.workerCount > 0 {
+		receiver.centralKiller <- struct{}{}
+		receiver.workerCount--
+	}
+}
+
+// GetWorkerCount worker count getter
+func (receiver Pipe) GetWorkerCount() int {
+	return receiver.workerCount
 }
