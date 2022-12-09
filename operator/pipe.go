@@ -5,6 +5,8 @@ import (
 	"log"
 )
 
+// Pipe a stage of process of an entity
+// with specific error handler and also response channels
 type Pipe struct {
 	name          string
 	processor     Processor
