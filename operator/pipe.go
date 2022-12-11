@@ -3,6 +3,7 @@ package operator
 import (
 	"context"
 	"log"
+	"sync/atomic"
 	"time"
 )
 
@@ -11,7 +12,7 @@ import (
 type Pipe struct {
 	name             string
 	processor        Processor
-	workerCount      int
+	workerCount      int32
 	errorHandler     ErrorHandler
 	requestChan      chan interface{}
 	responseChan     chan interface{}
@@ -20,7 +21,7 @@ type Pipe struct {
 }
 
 // NewWorker create new worker to listen in request channel and put response in response channel
-func (receiver Pipe) NewWorker() {
+func (receiver *Pipe) NewWorker() {
 	go func() {
 		for {
 			select {
@@ -44,12 +45,12 @@ func (receiver Pipe) NewWorker() {
 			}
 		}
 	}()
-	receiver.workerCount++
-	log.Default().Printf("Pipe %s worker count increase to %d", receiver.name, receiver.workerCount)
+	atomic.AddInt32(&receiver.workerCount, 1)
+	log.Default().Printf("Pipe %s worker count increased to %d", receiver.name, receiver.workerCount)
 }
 
 // DecreaseWorkerCount decrease one of workers
-func (receiver Pipe) DecreaseWorkerCount() {
+func (receiver *Pipe) DecreaseWorkerCount() {
 	// check if there is an active worker kill it
 	if receiver.workerCount > 0 {
 		receiver.centralKiller <- struct{}{}
@@ -58,6 +59,11 @@ func (receiver Pipe) DecreaseWorkerCount() {
 }
 
 // GetWorkerCount worker count getter
-func (receiver Pipe) GetWorkerCount() int {
+func (receiver *Pipe) GetWorkerCount() int32 {
 	return receiver.workerCount
+}
+
+// GetResponseChan return response channel of the pipe
+func (receiver *Pipe) GetResponseChan() chan interface{} {
+	return receiver.responseChan
 }
